@@ -2,6 +2,7 @@
 #
 # Copyright (C) 2001-2020 NLTK Project
 # Author: Tanin Na Nakorn (@tanin)
+# New version of compute_type_raised_semantics: Mats Rooth
 # URL: <http://nltk.org/>
 # For license information, see LICENSE.TXT
 """
@@ -12,23 +13,15 @@ from nltk.sem.logic import *
 
 
 def compute_type_raised_semantics(semantics):
-    core = semantics
-    parent = None
-    while isinstance(core, LambdaExpression):
-        parent = core
-        core = core.term
+    varf = Variable('F')
+    vara = Variable('z')
+    expf = FunctionVariableExpression(varf)
+    expa = FunctionVariableExpression(vara)
 
-    var = Variable("F")
-    while var in core.free():
-        var = unique_variable(pattern=var)
-    core = ApplicationExpression(FunctionVariableExpression(var), core)
+    raiser = LambdaExpression(vara,LambdaExpression(varf,ApplicationExpression(expf, expa)))
 
-    if parent is not None:
-        parent.term = core
-    else:
-        semantics = core
-
-    return LambdaExpression(var, semantics)
+    semantics2 = ApplicationExpression(raiser,semantics)
+    return semantics2.simplify()
 
 
 def compute_function_semantics(function, argument):
