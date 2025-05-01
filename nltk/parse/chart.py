@@ -177,6 +177,15 @@ class EdgeI(object):
         :rtype: Nonterminal or terminal or None
         """
         raise NotImplementedError()
+    
+    def nextnextsym(self):
+        """
+        Return the element of this edge's right-hand side that
+        immediately follows the element that follows its dot.
+
+        :rtype: Nonterminal or terminal or None
+        """
+        raise NotImplementedError()
 
     def is_complete(self):
         """
@@ -309,6 +318,23 @@ class TreeEdge(EdgeI):
             dot=self._dot + 1,
         )
 
+    def move_dot_twice_forward(self, new_end):
+        """
+        Return a new ``TreeEdge`` formed from this edge.
+        The new edge's dot position is increased by ``2``,
+        and its end index will be replaced by ``new_end``.
+
+        :param new_end: The new end index.
+        :type new_end: int
+        :rtype: TreeEdge
+        """
+        return TreeEdge(
+            span=(self._span[0], new_end),
+            lhs=self._lhs,
+            rhs=self._rhs,
+            dot=self._dot + 2,
+        )
+
     # Accessors
     def lhs(self):
         return self._lhs
@@ -342,6 +368,12 @@ class TreeEdge(EdgeI):
             return None
         else:
             return self._rhs[self._dot]
+
+    def nextnextsym(self):
+        if self._dot > len(self._rhs):
+            return None
+        else:
+            return self._rhs[self._dot + 1]        
 
     # String representation
     def __str__(self):
@@ -629,6 +661,15 @@ class Chart(object):
         """
         cpls = self.child_pointer_lists(previous_edge)
         new_cpls = [cpl + (child_edge,) for cpl in cpls]
+        return self.insert(new_edge, *new_cpls)
+
+    # mr249 a guess at this point
+    def insert_with_backpointers(self, new_edge, previous_edge, child_edge1, child_edge2):
+        """
+        Add a new edge to the chart, using a pointer to the previous edge.
+        """
+        cpls = self.child_pointer_lists(previous_edge)
+        new_cpls = [cpl + (child_edge1,child_edge2,) for cpl in cpls]
         return self.insert(new_edge, *new_cpls)
 
     def insert(self, edge, *child_pointer_lists):
@@ -1049,7 +1090,7 @@ class FundamentalRule(AbstractChartRule):
         if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
             yield new_edge
 
-
+  
 class SingleEdgeFundamentalRule(FundamentalRule):
     r"""
     A rule that joins a given edge with adjacent edges in the chart,
@@ -1095,7 +1136,145 @@ class SingleEdgeFundamentalRule(FundamentalRule):
             if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
                 yield new_edge
 
+class LexicalSingleEdgeFundamentalRule(FundamentalRule):
+    r"""
+    A rule that joins a given incomolete lexical edge with an adjacent terminal
+    already in th chart.
 
+    - ``[A -> alpha \* B beta][i:j]``
+    - ``[B -> gamma \*][j:k]``
+
+    licenses the edge:
+
+    - ``[A -> alpha B * beta][i:j]``
+
+    if the other edge is already in the chart.
+
+    :note: This is basically ``FundamentalRule``, with one edge left
+        unspecified.
+    """
+
+    NUM_EDGES = 1
+
+    def apply(self, chart, grammar, edge):
+        if edge.is_incomplete() and len(edge.rhs()) == 1 and isinstance(edge.rhs()[0],str):
+            for new_edge in self._apply_incomplete(chart, grammar, edge):
+                yield new_edge
+        else:
+            for new_edge in []:
+                yield new_edge
+
+    def _apply_complete(self, chart, grammar, right_edge):
+        for left_edge in chart.select(
+            end=right_edge.start(), is_complete=False, nextsym=right_edge.lhs()
+        ):
+            new_edge = left_edge.move_dot_forward(right_edge.end())
+            if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
+                yield new_edge
+
+    def _apply_incomplete(self, chart, grammar, left_edge):
+        for right_edge in chart.select(
+            start=left_edge.end(), is_complete=True, lhs=left_edge.nextsym()
+        ):
+            new_edge = left_edge.move_dot_forward(right_edge.end())
+            if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
+                yield new_edge
+
+# Copy of SingleEdgeFundamentalRule. This is used to test if the new schemas are
+# seen in an notebook when the local nltk is loaded. They are.
+class SoleEdgeFundamentalRule(FundamentalRule):
+    r"""
+    SingleEdgeFundamentalRule with another name.
+    A rule that joins a given edge with adjacent edges in the chart,
+    to form combined edges.  In particular, this rule specifies that
+    either of the edges:
+
+    - ``[A -> alpha \* B beta][i:j]``
+    - ``[B -> gamma \*][j:k]``
+
+    licenses the edge:
+
+    - ``[A -> alpha B * beta][i:j]``
+
+    if the other edge is already in the chart.
+
+    :note: This is basically ``FundamentalRule``, with one edge left
+        unspecified.
+    """
+
+    NUM_EDGES = 1
+
+    def apply(self, chart, grammar, edge):
+        if edge.is_incomplete():
+            for new_edge in self._apply_incomplete(chart, grammar, edge):
+                yield new_edge
+        else:
+            for new_edge in self._apply_complete(chart, grammar, edge):
+                yield new_edge
+
+    def _apply_complete(self, chart, grammar, right_edge):
+        for left_edge in chart.select(
+            end=right_edge.start(), is_complete=False, nextsym=right_edge.lhs()
+        ):
+            new_edge = left_edge.move_dot_forward(right_edge.end())
+            if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
+                yield new_edge
+
+    def _apply_incomplete(self, chart, grammar, left_edge):
+        for right_edge in chart.select(
+            start=left_edge.end(), is_complete=True, lhs=left_edge.nextsym()
+        ):
+            new_edge = left_edge.move_dot_forward(right_edge.end())
+            if chart.insert_with_backpointer(new_edge, left_edge, right_edge):
+                yield new_edge
+
+
+  
+class DoubleEdgeFundamentalRule(FundamentalRule):
+    r"""
+    A rule that joins a given edge with two adjacent edges in the chart,
+    to form a combined edge.  In particular, this rule specifies that
+    the first of the edges
+
+    - ``[A -> alpha \* B C beta][i:j]``
+    - ``[B -> phi \*][j:k]``
+    - ``[C -> psi \*][k:l]``    
+
+    licenses the edge:
+
+    - ``[A -> alpha B C * beta][i:j]``
+
+    if the other two edges are already in the chart.
+
+    :note: For a CNF grammar, this behaves like the CKY algorithm.
+    """
+
+    NUM_EDGES = 1
+
+    def apply(self, chart, grammar, edge):
+        if edge.is_incomplete() and len(edge.rhs()) == 2:
+            for new_edge in self._apply_incomplete(chart, grammar, edge):
+                yield new_edge
+        else:
+            for new_edge in self._apply_complete(chart, grammar, edge):
+                yield new_edge
+
+    def _apply_complete(self, chart, grammar, right_edge):
+        for x in []:
+            yield x 
+
+    def _apply_incomplete(self, chart, grammar, parent_edge):
+        for edge_b in chart.select(
+            start=parent_edge.end(), is_complete=True, lhs=parent_edge.nextsym()
+        ):
+            for edge_c in chart.select(
+                    start=edge_b.end(), is_complete=True, lhs=parent_edge.nextnextsym()
+            ):
+                new_edge = parent_edge.move_dot_twice_forward(edge_c.end())
+                if chart.insert_with_backpointers(new_edge, parent_edge, edge_b, edge_c):
+                    yield new_edge
+
+                
 # ////////////////////////////////////////////////////////////
 # Inserting Terminal Leafs
 # ////////////////////////////////////////////////////////////
@@ -1725,6 +1904,33 @@ Noun -> "cookie"
 Verb -> "ate"
 Verb -> "saw"
 Prep -> "with"
+Prep -> "under"
+"""
+    )
+
+def demo_cnf_grammar():
+    from nltk.grammar import CFG
+
+    return CFG.fromstring(
+        """
+S  -> NP VP
+S  -> NP Verb
+PP -> WITH NP
+NP -> NP PP
+VP -> VP PP
+VP -> Verb NP
+NP -> Det Noun
+NP -> "John"
+NP -> "I"
+Det -> "the"
+Det -> "my"
+Det -> "a"
+Noun -> "dog"
+Noun -> "cookie"
+Verb -> "ate"
+Verb -> "saw"
+Prep -> "with"
+WITH -> "with"
 Prep -> "under"
 """
     )
