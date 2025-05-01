@@ -1,3 +1,18 @@
+# Ckyish NLTK parsing
+This branch experiments with adding rules to the chart parser.  Currently there are additions that with this strategy
+```
+leaf_init = nltk.parse.chart.LeafInitRule()
+bottom_up_predict = nltk.parse.chart.BottomUpPredictRule()
+double_edge = nltk.parse.chart.DoubleEdgeFundamentalRule()
+lexical_single_edge = nltk.parse.chart.LexicalSingleEdgeFundamentalRule()
+
+strategy = [leaf_init,
+            lexical_single_edge,
+            bottom_up_predict,
+            double_edge]
+```
+emulate CKY parsing.  See notebooks/ckyish.ipynb for an illustration with the stepping chart parser.
+
 # Natural Language Toolkit (NLTK)
 [![PyPI](https://img.shields.io/pypi/v/nltk.svg)](https://pypi.python.org/pypi/nltk) 
 [![Travis](https://travis-ci.org/nltk/nltk.svg?branch=develop)](https://travis-ci.org/nltk/nltk)
